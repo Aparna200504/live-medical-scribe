@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Medical Scribe</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <section class="card recorder-card">
+      <header class="section-header">
+        <div class="title-wrap">
+          <span class="title-icon">◉</span>
+          <div>
+            <p class="eyebrow">LIVE DOCUMENTATION</p>
+            <h1>Live Medical Transcription</h1>
+          </div>
+        </div>
+        <span id="status" class="status idle">Ready</span>
+      </header>
+
+      <div class="controls">
+        <button id="startBtn" class="btn primary">🎙 Start Mic</button>
+        <button id="stopBtn" class="btn danger" disabled>■ Stop &amp; Summarize</button>
+        <button id="clearBtn" class="btn neutral">◌ Clear</button>
+        <button id="saveBtn" class="btn success">▣ Save Transcript</button>
+      </div>
+
+      <div class="pipeline" aria-label="Processing pipeline">
+        <div class="pipeline-step" data-stage="capture"><b>1</b> Microphone</div>
+        <span>→</span>
+        <div class="pipeline-step" data-stage="vad"><b>2</b> VAD</div>
+        <span>→</span>
+        <div class="pipeline-step" data-stage="asr"><b>3</b> Whisper ASR</div>
+        <span>→</span>
+        <div class="pipeline-step" data-stage="llm"><b>4</b> LLM</div>
+      </div>
+
+      <div class="stats">
+        <span>● WORDS: <strong id="wordCount">0</strong></span>
+        <span>◌ CHUNKS: <strong id="chunkCount">0</strong></span>
+        <span>◉ VAD: <strong id="vadState">Idle</strong></span>
+      </div>
+
+      <div class="field-label">LIVE TRANSCRIPT</div>
+      <div id="transcript" class="transcript" aria-live="polite">
+        <span class="placeholder">Transcribed speech will appear here...</span>
+      </div>
+
+      <div id="message" class="message">
+        <strong>⚒ Ready</strong> — click Start Mic and speak naturally.<br>
+        Silence and background noise are filtered by Voice Activity Detection before Whisper receives speech.
+      </div>
+
+      <div class="hint">
+        <span>🔊</span>
+        <div><strong>Audio pipeline</strong><br>Browser captures mono audio → 16 kHz PCM → VAD filters silence → Whisper transcribes speech.</div>
+      </div>
+    </section>
+
+    <section class="card summary-card">
+      <header class="section-header">
+        <div class="title-wrap">
+          <span class="title-icon purple">⌁</span>
+          <div>
+            <p class="eyebrow">LLM ANALYSIS</p>
+            <h2>AI Medical Summary</h2>
+          </div>
+        </div>
+        <button id="clearSummaryBtn" class="text-btn">× Clear</button>
+      </header>
+
+      <div class="patient-strip">
+        <div><span>Patient Name</span><strong id="patientName">Not mentioned</strong></div>
+        <div><span>Age</span><strong id="patientAge">Not mentioned</strong></div>
+        <div><span>Sex</span><strong id="patientSex">Not mentioned</strong></div>
+      </div>
+
+      <div id="summary" class="summary-content">
+        <div class="empty-summary">
+          <div class="empty-icon">✦</div>
+          <strong>Clinical summary will appear here</strong>
+          <span>Stop the recording to send the complete transcript to the LLM.</span>
+        </div>
+      </div>
+
+      <button id="copySummaryBtn" class="btn primary full">▣ Copy Clinical Summary</button>
+      <p class="disclaimer">For demonstration only. AI output must be reviewed by a qualified clinician before use in a medical record.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
