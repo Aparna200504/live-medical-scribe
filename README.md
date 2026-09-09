@@ -73,8 +73,8 @@ Structured Clinical Summary
 - PyTorch
 - Google Gemini API
 - Pydantic
+  
 **Frontend**
-
 - HTML5
 - CSS3
 - JavaScript
