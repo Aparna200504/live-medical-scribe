@@ -1,194 +1,181 @@
 # Live Medical Scribe
 
-## Project Overview
-**Live Medical Scribe** is a real-time medical documentation prototype that converts a doctor-patient conversation into a structured clinical summary.
+A multilingual, real-time medical scribe that captures a doctor-patient conversation, detects language changes, transcribes speech, and generates a structured clinical summary.
 
-The application:
+## Features
 
-- Captures microphone audio in the browser
-- Filters silence using **Silero VAD**
-- Converts speech to text using **Faster-Whisper**
-- Displays the transcript in real time
-- Uses **Google Gemini** to generate a structured clinical summary
-- Validates the output using **Pydantic**
-
-## Key Features
-
-- Real-time microphone recording
-- Voice Activity Detection (VAD)
-- Speech-to-text transcription
-- Live transcript display
-- AI-powered clinical summary generation
-- Structured medical information extraction
-- Positive and negative symptom separation
-- Pydantic schema validation
-- Responsive web interface
-- WebSocket-based communication
-- Error handling and input validation
-
-## Clinical Summary
-The AI extracts:
-
-- **Patient Details** — name, age, sex, identifiers
-- **Chief Complaint**
-- **History of Present Illness**
-- **Symptoms** — positive and stated negatives
-- **Past Medical History**
-- **Medication History**
-- **Clinical Observations**
-- **Assessment**
-- **Plan**
-The system only extracts information present in the transcript and does not intentionally invent medical information. The generated summary should always be reviewed by a qualified clinician.
+* 🎙️ Live microphone transcription over WebSocket
+* 🌐 Multilingual speech recognition with automatic language detection
+* 🔄 Supports switching between English, Hindi, Marathi and other supported languages within one session
+* 🧠 Gemini-based structured clinical summarization
+* 🛡️ Pydantic validation for generated summaries
+* 🔇 Silero VAD to reduce unnecessary ASR processing
+* 📊 Health, status and metrics endpoints
+* ⚡ CPU-optimized Faster-Whisper inference
 
 ## Architecture
 
-```
-Microphone
-	↓
-Browser Audio Capture
-	↓
+```text
+Browser Microphone
+       ↓
+Web Audio API
+       ↓ PCM16
 FastAPI WebSocket
-	↓
+       ↓
 Silero VAD
-	↓
+       ↓
 Faster-Whisper
-	↓
-Live Transcript
-	↓
-Google Gemini
-	↓
-Pydantic Validation
-	↓
-Structured Clinical Summary
+       ↓
+Language Detection
+       ↓
+Transcript Segments
+       ↓
+Gemini
+       ↓
+Pydantic ClinicalSummary
+       ↓
+Frontend
 ```
 
-## Technology Stack
-**Backend**
+## Implementation
 
-- Python
-- FastAPI
-- Uvicorn
-- Faster-Whisper
-- Silero VAD
-- PyTorch
-- Google Gemini API
-- Pydantic
-  
-**Frontend**
-- HTML5
-- CSS3
-- JavaScript
-- Web Audio API
-- WebSockets
+### Speech Detection
 
-## Project Structure
+`vad.py` uses **Silero VAD** to determine whether incoming PCM audio contains speech. A short hangover window prevents words from being cut off at the end of speech.
 
+### Multilingual ASR
+
+`asr.py` uses **Faster-Whisper (`base`)** with:
+
+* CPU + INT8 inference
+* Automatic language detection
+* `condition_on_previous_text=False` to reduce language carry-over between segments
+* Minimum segment duration filtering
+* Language confidence handling
+
+Each transcript segment contains:
+
+```json
+{
+  "text": "Patient has fever since yesterday.",
+  "language": "en",
+  "language_name": "English"
+}
 ```
-doctorsapp/
-│
-├── backend/
-│   ├── main.py
-│   ├── vad.py
-│   ├── asr.py
-│   ├── llm.py
-│   ├── test_schema.py
-│   ├── test_client.py
-│   └── .env.example
-│
-├── frontend/
-│   ├── index.html
-│   ├── app.js
-│   └── styles.css
-│
-├── requirements.txt
-└── README.md
-```
+
+Language detection is performed independently for each speech segment, allowing the session to switch languages multiple times.
+
+### WebSocket Pipeline
+
+`main.py` manages the continuous session:
+
+1. Receive PCM16 audio
+2. Run VAD
+3. Buffer speech
+4. Transcribe after silence or maximum segment duration
+5. Send transcript and detected language to the frontend
+6. Generate the final clinical summary when the session ends
+
+The backend also exposes `/health`, `/health/ready`, `/status`, and `/metrics`.
+
+### Clinical Summarization
+
+`llm.py` sends the complete multilingual transcript to **Gemini**.
+
+The prompt instructs the model to:
+
+* Understand mixed-language conversations
+* Extract only explicitly stated information
+* Avoid inventing diagnoses or treatment
+* Return structured English JSON
+
+The response is validated using the `ClinicalSummary` Pydantic schema.
+
+## Tech Stack
+
+| Component  | Technology            |
+| ---------- | --------------------- |
+| Frontend   | HTML, CSS, JavaScript |
+| Backend    | FastAPI, WebSockets   |
+| VAD        | Silero VAD            |
+| ASR        | Faster-Whisper        |
+| LLM        | Gemini                |
+| Validation | Pydantic              |
+| Audio      | Web Audio API, PCM16  |
+| Testing    | Pytest                |
 
 ## Setup
 
-### 1. Create Virtual Environment
-From the project root:
+### Backend
 
-```
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+```bash
+pip install -r requirements.txt
 ```
 
-### 2. Install Dependencies
+Create `.env`:
 
-```
-python -m pip install -r requirements.txt
-```
-
-### 3. Configure Gemini
-Create:
-
-```
-backend/.env
-```
-Add:
-
-```
-GEMINI_API_KEY=your_gemini_api_key_here
+```env
+GEMINI_API_KEY=your_api_key
 GEMINI_MODEL=gemini-2.5-flash
 ```
-Keep the API key private and do not commit `.env` to GitHub.
 
-### 4. Start Backend
+Run:
 
-```
-python -m uvicorn main:app --reload --app-dir backend
-```
-Backend:
-
-```
-http://localhost:8000
+```bash
+uvicorn backend.main:app --reload
 ```
 
-### 5. Start Frontend
-Open another terminal:
+### Frontend
 
-```
+```bash
 cd frontend
 python -m http.server 3000
 ```
+
 Open:
 
-```
+```text
 http://localhost:3000
 ```
-Allow microphone access when prompted.
-
-## Usage
-
-1. Open the application.
-2. Click **Start Recording**.
-3. Allow microphone access.
-4. Speak during the consultation.
-5. View the transcript as it is generated.
-6. Click **Stop & Summarize**.
-7. Review the generated clinical summary.
 
 ## Testing
-Run the schema tests:
 
+```bash
+pytest
 ```
-python -m pytest -q backend/test_schema.py
+
+The project includes tests for the clinical summary schema and WebSocket client behavior.
+
+## Project Structure
+
+```text
+backend/
+├── main.py       # WebSocket server and session management
+├── asr.py        # Faster-Whisper transcription
+├── vad.py        # Silero speech detection
+├── llm.py        # Gemini summarization + Pydantic schemas
+├── benchmark_threads.py # compares Faster-Whisper CPU inference time across different CPU thread counts to help tune ASR performance.
+└── test_*.py     # Tests
+
+
+frontend/
+├── index.html
+├── app.js
+└── styles.css
+requirements.txt
+README.md
 ```
-The tests verify valid and invalid clinical summary structures.
 
+## Limitations
 
-## Future Work
+* CPU inference is slower than GPU inference, especially with larger Whisper models.
+* Language detection can become less reliable for very short or noisy speech segments.
+* Clinical output is intended for documentation assistance and requires human review.
 
-- Replace `ScriptProcessorNode` with `AudioWorklet`
-- Add speaker diarization
-- Support multiple languages
-- Improve medical terminology recognition
-- Add authentication and secure data handling
-- Add automated end-to-end and performance testing
-- Integrate with EHR systems
-- Add production monitoring and scalable background workers
+## Future Improvements
 
-## Recruiter Summary
-This project demonstrates practical experience in **AI/ML, Python backend development, real-time audio processing, WebSockets, speech recognition, LLM integration, structured data validation, and frontend development**. It showcases an end-to-end AI application from microphone input to a structured, user-facing medical document.
-"# live-medical-scribe" 
+* GPU inference and model benchmarking
+* Better language detection for short utterances
+* Speaker diarization
+* Persistent consultation storage
+* Production authentication and deployment
