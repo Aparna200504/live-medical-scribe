@@ -291,17 +291,3 @@ Responsibilities:
 * Pydantic schema validation
 * Clinical extraction guardrails
 
-```
-
-**One thing I would definitely change from your pasted version:** remove the huge `main.py` comment block from `README.md`. That belongs inside `main.py`, not the README. The new README above already documents that separation clearly.
-
-Also, because this is your **feature branch**, this README accurately reflects the architectural change from:
-
-`main.py → VAD + buffer + transcription`
-
-to:
-
-`main.py → StreamProcessor → VAD/buffer → ASR`
-
-That will make the branch easier to explain in the interview too.
-```
