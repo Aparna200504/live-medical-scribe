@@ -1,48 +1,9 @@
-# ============================================================
-# Live Medical Scribe - FastAPI Backend
-# ============================================================
-#
-# Responsibilities of this file:
-#   - FastAPI application
-#   - HTTP health/status/metrics endpoints
-#   - WebSocket session lifecycle
-#   - Audio reception and PCM conversion
-#   - StreamProcessor integration
-#   - Transcript collection
-#   - Gemini clinical summary generation
-#   - Heartbeat / connection monitoring
-#
-# StreamProcessor is responsible for:
-#   - Silero VAD
-#   - speech buffering
-#   - silence-based phrase detection
-#   - maximum phrase duration
-#   - pre-roll audio
-#   - language reset at phrase boundaries
-#
-# Transcriber is responsible for:
-#   - Faster-Whisper
-#   - language detection
-#   - transcription
-#
-# ============================================================
 
 from __future__ import annotations
-
-# ------------------------------------------------------------
-# IMPORTANT:
-# Set native CPU thread limits BEFORE importing torch,
-# faster-whisper, silero-vad, or other native ML libraries.
-# ------------------------------------------------------------
-
 import os
 
 os.environ.setdefault("OMP_NUM_THREADS", "8")
 os.environ.setdefault("MKL_NUM_THREADS", "8")
-
-# ------------------------------------------------------------
-# Standard library imports
-# ------------------------------------------------------------
 
 import asyncio
 import logging
@@ -52,16 +13,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-# ------------------------------------------------------------
-# Third-party imports
-# ------------------------------------------------------------
-
 import numpy as np
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
-# ------------------------------------------------------------
-# Local imports
-# ------------------------------------------------------------
 
 from asr import Transcriber
 from llm import (
@@ -72,10 +26,7 @@ from llm import (
 from stream_processor import StreamProcessor
 from vad import VoiceActivityDetector
 
-
-# ============================================================
 # Application
-# ============================================================
 
 app = FastAPI(
     title="Live Medical Scribe API",
@@ -84,14 +35,9 @@ app = FastAPI(
 
 logger = logging.getLogger(__name__)
 
-# CPU-bound ASR/VAD/LLM work should not block the async
-# WebSocket event loop.
 executor = ThreadPoolExecutor(max_workers=2)
 
-
-# ============================================================
 # Configuration
-# ============================================================
 
 SAMPLE_RATE = 16000
 
@@ -115,10 +61,7 @@ ASR_CPU_THREADS = 8
 ASR_DEVICE = "cpu"
 ASR_COMPUTE_TYPE = "int8"
 
-
-# ============================================================
 # Server metrics
-# ============================================================
 
 SERVER_START_TIME = time.monotonic()
 SERVER_START_ISO = datetime.now(timezone.utc).isoformat()
@@ -133,11 +76,7 @@ _metrics = {
     "last_disconnect": None,
 }
 
-
-# ============================================================
 # Dependency checks
-# ============================================================
-
 def _check_dependency(name: str, import_name: str) -> dict:
     """
     Check whether an optional/runtime dependency is available.
@@ -160,10 +99,6 @@ def _check_dependency(name: str, import_name: str) -> dict:
             "error": str(exc),
         }
 
-
-# ============================================================
-# Basic HTTP endpoints
-# ============================================================
 
 @app.get("/")
 def read_root():
@@ -264,10 +199,7 @@ def health_ready():
         "dependencies": dependencies,
     }
 
-
-# ============================================================
 # Status endpoint
-# ============================================================
 
 @app.get("/status")
 def status():
@@ -339,10 +271,6 @@ def status():
     }
 
 
-# ============================================================
-# Metrics endpoint
-# ============================================================
-
 @app.get("/metrics")
 def metrics():
     """
@@ -378,10 +306,7 @@ def metrics():
         ],
     }
 
-
-# ============================================================
 # WebSocket endpoint
-# ============================================================
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -403,9 +328,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.accept()
 
-    # --------------------------------------------------------
     # Connection registration
-    # --------------------------------------------------------
 
     connection_id = (
         f"conn-{int(time.time() * 1000)}-"
@@ -426,30 +349,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
     loop = asyncio.get_running_loop()
 
-    # --------------------------------------------------------
     # Runtime model objects
-    # --------------------------------------------------------
-
+    
     detector: VoiceActivityDetector | None = None
     transcriber: Transcriber | None = None
     stream_processor: StreamProcessor | None = None
 
-    # --------------------------------------------------------
     # Complete transcript for final Gemini summary
-    # --------------------------------------------------------
 
     transcript_segments: list[dict] = []
 
-    # --------------------------------------------------------
-    # Heartbeat
-    # --------------------------------------------------------
 
     async def heartbeat_loop():
         """
-        Periodically send heartbeat messages.
-
-        This prevents idle WebSocket connections from being
-        considered inactive by some proxies/load balancers.
+        Send periodic heartbeat messages to keep the WebSocket
         """
 
         try:
@@ -489,18 +402,9 @@ async def websocket_endpoint(websocket: WebSocket):
         heartbeat_loop()
     )
 
-    # ========================================================
     # Model initialization
-    # ========================================================
-
+    
     async def initialize_models():
-        """
-        Lazily initialize VAD, Whisper and StreamProcessor.
-
-        Models are loaded only when the first audio packet
-        arrives instead of during application startup.
-        """
-
         nonlocal detector
         nonlocal transcriber
         nonlocal stream_processor
@@ -523,9 +427,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "stage"
         ] = "initializing"
 
-        # ----------------------------------------------------
         # Load Silero VAD
-        # ----------------------------------------------------
 
         detector = await loop.run_in_executor(
             executor,
@@ -534,10 +436,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 hangover_frames=8,
             ),
         )
-
-        # ----------------------------------------------------
         # Load Faster-Whisper
-        # ----------------------------------------------------
 
         transcriber = await loop.run_in_executor(
             executor,
@@ -550,9 +449,7 @@ async def websocket_endpoint(websocket: WebSocket):
             ),
         )
 
-        # ----------------------------------------------------
         # Create streaming processor
-        # ----------------------------------------------------
 
         stream_processor = StreamProcessor(
             transcriber=transcriber,
@@ -583,18 +480,11 @@ async def websocket_endpoint(websocket: WebSocket):
             "stage"
         ] = "ready"
 
-    # ========================================================
     # Add transcript segment
-    # ========================================================
 
     def add_transcript_segment(
         result: dict | None,
     ) -> dict | None:
-        """
-        Convert a StreamProcessor result into the normalized
-        transcript representation used by the frontend and
-        final Gemini summary.
-        """
 
         if not result:
             return None
@@ -633,18 +523,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
         return segment
 
-    # ========================================================
     # Send one transcription result
-    # ========================================================
 
     async def process_transcription_result(
         result: dict | None,
     ):
-        """
-        Send a StreamProcessor result to the frontend.
-
-        Returns the normalized transcript segment or None.
-        """
 
         segment = add_transcript_segment(result)
 
@@ -675,15 +558,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
         return segment
 
-    # ========================================================
     # Final Gemini summary
-    # ========================================================
 
     async def send_summary() -> None:
-        """
-        Build the complete language-tagged transcript and
-        generate the final structured clinical summary.
-        """
 
         if not transcript_segments:
 
@@ -698,9 +575,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             return
 
-        # ----------------------------------------------------
         # Build language-aware transcript
-        # ----------------------------------------------------
 
         formatted_segments = []
 
@@ -756,8 +631,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 connection_id
             ]["stage"] = "summarizing"
 
-            # Gemini call is synchronous, so run it outside
-            # the asyncio event loop.
             summary: ClinicalSummary = (
                 await loop.run_in_executor(
                     executor,
@@ -766,9 +639,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
             )
 
-            # ------------------------------------------------
             # Pydantic v2 / v1 compatibility
-            # ------------------------------------------------
 
             if hasattr(summary, "model_dump"):
 
@@ -806,21 +677,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     "message": SUMMARY_ERROR_MESSAGE,
                 }
             )
-
-    # ========================================================
     # Main WebSocket receive loop
-    # ========================================================
-
     try:
 
         while True:
 
             message = await websocket.receive()
-
-            # =================================================
             # WebSocket disconnect event
-            # =================================================
-
             if (
                 message.get("type")
                 == "websocket.disconnect"
@@ -852,17 +715,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 break
 
-            # =================================================
             # CONTROL MESSAGES
-            # =================================================
-
             if message.get("text") is not None:
 
                 control_message = message["text"]
-
-                # ---------------------------------------------
-                # Validate control message
-                # ---------------------------------------------
 
                 if (
                     not isinstance(
@@ -884,14 +740,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     continue
 
-                # ---------------------------------------------
                 # STOP
-                # ---------------------------------------------
 
                 if control_message == "stop":
 
-                    # There may still be speech inside the
-                    # StreamProcessor buffer.
                     if stream_processor is not None:
 
                         await websocket.send_json(
@@ -923,10 +775,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.close()
 
                     return
-
-                # ---------------------------------------------
                 # Unsupported control message
-                # ---------------------------------------------
 
                 await websocket.send_json(
                     {
@@ -939,19 +788,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
                 continue
-
-            # =================================================
             # AUDIO DATA
-            # =================================================
-
             data = message.get("bytes")
 
             if not data:
                 continue
-
-            # ---------------------------------------------
             # Audio packet size protection
-            # ---------------------------------------------
 
             if len(data) > MAX_AUDIO_BYTES:
 
@@ -966,9 +808,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 continue
 
-            # ---------------------------------------------
             # PCM16 validation
-            # ---------------------------------------------
 
             if len(data) % 2:
 
@@ -984,9 +824,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 continue
 
-            # ---------------------------------------------
             # Session duration protection
-            # ---------------------------------------------
 
             elapsed_session = (
                 time.monotonic()
@@ -1014,23 +852,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 return
 
-            # ---------------------------------------------
             # Lazy model initialization
-            # ---------------------------------------------
-
             await initialize_models()
-
-            # At this point initialize_models() guarantees
-            # that stream_processor exists.
             if stream_processor is None:
                 raise RuntimeError(
                     "StreamProcessor failed to initialize."
                 )
 
-            # ---------------------------------------------
             # Convert PCM16 -> float32
-            # ---------------------------------------------
-
             audio_chunk = (
                 np.frombuffer(
                     data,
@@ -1044,19 +873,6 @@ async def websocket_endpoint(websocket: WebSocket):
             if audio_chunk.size == 0:
                 continue
 
-            # ---------------------------------------------
-            # Process audio through StreamProcessor
-            #
-            # StreamProcessor handles:
-            #   - VAD
-            #   - speech start
-            #   - pre-roll
-            #   - silence detection
-            #   - max phrase duration
-            #   - language reset
-            #   - Whisper transcription
-            # ---------------------------------------------
-
             _active_connections[
                 connection_id
             ]["stage"] = "recording"
@@ -1068,11 +884,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 stream_processor.process_chunk,
                 audio_chunk,
             )
-
-            # ------------------------------------------------
-            # A result means a complete phrase/window has
-            # been transcribed.
-            # ------------------------------------------------
 
             if result is not None:
 
@@ -1099,10 +910,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     result
                 )
 
-    # ========================================================
     # Expected WebSocket disconnect
-    # ========================================================
-
+ 
     except WebSocketDisconnect as exc:
 
         logger.info(
@@ -1127,9 +936,7 @@ async def websocket_endpoint(websocket: WebSocket):
             ).isoformat(),
         }
 
-    # ========================================================
     # Unexpected processing error
-    # ========================================================
 
     except Exception:
 
@@ -1165,9 +972,6 @@ async def websocket_endpoint(websocket: WebSocket):
             # Socket may already be closed.
             pass
 
-    # ========================================================
-    # Cleanup
-    # ========================================================
 
     finally:
 
